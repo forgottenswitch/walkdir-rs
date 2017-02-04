@@ -90,6 +90,8 @@ for entry in walker.filter_entry(|e| !is_hidden(e)) {
 #[cfg(test)] extern crate rand;
 extern crate same_file;
 
+mod os_emul;
+
 use std::cmp::{Ordering, min};
 use std::error;
 use std::fmt;
@@ -100,6 +102,8 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::result;
 use std::vec;
+
+use os_emul::OsEmul;
 
 pub use same_file::is_same_file;
 
@@ -184,6 +188,7 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 pub struct WalkDir {
     opts: WalkDirOptions,
     root: PathBuf,
+    os_emul: OsEmul,
 }
 
 struct WalkDirOptions {
@@ -200,7 +205,10 @@ impl WalkDir {
     /// yielded by the iterator. If `root` is a file, then it is the first
     /// and only item yielded by the iterator. If `root` is a symlink, then it
     /// is always followed.
-    pub fn new<P: AsRef<Path>>(root: P) -> Self {
+    ///
+    /// The `os_emul` arg is a `os_emul::OsEmul` instance.
+    /// It must be only one (i.e. a singleton) per program instance.
+    pub fn new<P: AsRef<Path>>(root: P, os_emul: OsEmul) -> Self {
         WalkDir {
             opts: WalkDirOptions {
                 follow_links: false,
@@ -210,6 +218,7 @@ impl WalkDir {
                 sorter: None,
             },
             root: root.as_ref().to_path_buf(),
+            os_emul: os_emul,
         }
     }
 
@@ -317,6 +326,7 @@ impl IntoIterator for WalkDir {
             stack_path: vec![],
             oldest_opened: 0,
             depth: 0,
+            os_emul: self.os_emul,
         }
     }
 }
@@ -438,6 +448,8 @@ pub struct Iter {
     /// The current depth of iteration (the length of the stack at the
     /// beginning of each iteration).
     depth: usize,
+    ///
+    os_emul: OsEmul,
 }
 
 /// A sequence of unconsumed directory entries.
@@ -543,8 +555,14 @@ impl Iter {
         &mut self,
         mut dent: DirEntry,
     ) -> Option<Result<DirEntry>> {
-        if self.opts.follow_links && dent.file_type().is_symlink() {
-            dent = itry!(self.follow(dent));
+        if self.os_emul.running_under_cygwin() {
+            if self.opts.follow_links && self.os_emul.dirent_is_probably_cygwin_symlink(&dent) {
+                dent = itry!(self.follow_cygwin_symlink(dent))
+            }
+        } else {
+            if self.opts.follow_links && dent.file_type().is_symlink() {
+                dent = itry!(self.follow(dent));
+            }
         }
         if dent.file_type().is_dir() {
             self.push(&dent);
@@ -604,6 +622,19 @@ impl Iter {
             try!(self.check_loop(dent.path()));
         }
         Ok(dent)
+    }
+
+    fn follow_cygwin_symlink(&self, dent: DirEntry) -> Result<DirEntry> {
+        let path = dent.path();
+        let winpath = self.os_emul.dereference_cygwin_symlink(&path);
+        let dent1 = try!(DirEntry::from_link(self.depth, winpath.to_path_buf()));
+        // The only way a symlink can cause a loop is if it points
+        // to a directory. Otherwise, it always points to a leaf
+        // and we can omit any loop checks.
+        if dent1.file_type().is_dir() {
+            try!(self.check_loop(path));
+        }
+        Ok(dent1)
     }
 
     fn check_loop<P: AsRef<Path>>(&self, child: P) -> Result<()> {
