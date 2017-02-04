@@ -90,7 +90,7 @@ for entry in walker.filter_entry(|e| !is_hidden(e)) {
 #[cfg(test)] extern crate rand;
 extern crate same_file;
 
-mod os_emul;
+pub mod os_emul;
 
 use std::cmp::{Ordering, min};
 use std::error;

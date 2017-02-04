@@ -38,12 +38,13 @@ struct Args {
 macro_rules! wout { ($($tt:tt)*) => { {writeln!($($tt)*)}.unwrap() } }
 
 fn main() {
+    let os_emul = walkdir::os_emul::OsEmul::new();
     let args: Args = Docopt::new(USAGE).and_then(|d| d.decode())
                                        .unwrap_or_else(|e| e.exit());
     let mind = args.flag_min_depth.unwrap_or(0);
     let maxd = args.flag_max_depth.unwrap_or(::std::usize::MAX);
     let dir = args.arg_dir.clone().unwrap_or(".".to_owned());
-    let mut walkdir = WalkDir::new(dir)
+    let mut walkdir = WalkDir::new(dir, os_emul)
                      .max_open(args.flag_fd_max)
                      .follow_links(args.flag_follow_links)
                      .min_depth(mind)
