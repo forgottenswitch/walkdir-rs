@@ -20,6 +20,7 @@ use winapi::winnt::{
 
 use DirEntry;
 
+type CCP_Type = isize;
 pub const CCP_POSIX_TO_WIN_W : isize = 1;
 pub const CCP_WIN_W_TO_POSIX : isize = 3;
 
@@ -93,10 +94,11 @@ impl OsEmul {
         let path_zb = path_z.as_bytes().as_ptr();
 
         unsafe {
-            let conv_path : fn(isize, *const u8, *mut u8, isize) -> isize =
+            let conv_path : fn(CCP_Type, *const u8, *mut u8, isize) -> isize =
                 mem::transmute(self.cygwin_conv_path);
             // Get resulting path's length
-            let sz : isize = conv_path(mode, path_zb, 0 as *mut u8, 0);
+            let sz : isize = conv_path(mode as CCP_Type, path_zb, 0 as *mut u8, 0);
+            panic!(format!("PATH_PROBABLY_CALLED {:?}", path));
             if sz < 0 {
                 let err_path = format!("::CYGWIN::INVALID_PATH:: {}", path_s);
                 return PathBuf::from(err_path);
@@ -104,7 +106,7 @@ impl OsEmul {
             // Allocate memory for path
             let mut out_path : Vec<u8> = Vec::with_capacity(sz as usize);
             // Receive the path
-            conv_path(mode, path_zb, (&out_path[0..]).as_ptr() as *mut u8, sz);
+            conv_path(mode as CCP_Type, path_zb, (&out_path[0..]).as_ptr() as *mut u8, sz);
             // Covnert the path into PathBuf
             let out_path_utf8 = String::from_utf8_lossy(&out_path[0..]).into_owned();
             return PathBuf::from(out_path_utf8);
