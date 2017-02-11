@@ -11,6 +11,7 @@ keywords = ["directory", "recursive", "walk", "iterator"]
 license = "Unlicense/MIT"
 
 [dependencies]
+cygwin_fs = { version = "1", path = "cygwin_fs" }
 same-file = "0.1.1"
 
 [target.'cfg(windows)'.dependencies]
