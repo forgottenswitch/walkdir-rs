@@ -203,6 +203,9 @@ impl WalkDir {
     /// and only item yielded by the iterator. If `root` is a symlink, then it
     /// is always followed.
     pub fn new<P: AsRef<Path>>(root: P) -> Self {
+        let root_p = root.as_ref();
+        let cygroot = CygRoot::new();
+        let real_root = cygroot.resolve_path(root_p);
         WalkDir {
             opts: WalkDirOptions {
                 follow_links: false,
@@ -211,7 +214,7 @@ impl WalkDir {
                 max_depth: ::std::usize::MAX,
                 sorter: None,
             },
-            root: root.as_ref().to_path_buf(),
+            root: real_root,
         }
     }
 
