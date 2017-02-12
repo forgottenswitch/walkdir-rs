@@ -89,6 +89,7 @@ for entry in walker.filter_entry(|e| !is_hidden(e)) {
 #[cfg(test)] extern crate quickcheck;
 #[cfg(test)] extern crate rand;
 extern crate same_file;
+extern crate cygwin_fs;
 
 use std::cmp::{Ordering, min};
 use std::error;
@@ -102,6 +103,7 @@ use std::result;
 use std::vec;
 
 pub use same_file::is_same_file;
+use cygwin_fs::{CygRoot, maybe_cygwin_symlink};
 
 #[cfg(test)] mod tests;
 
@@ -317,6 +319,7 @@ impl IntoIterator for WalkDir {
             stack_path: vec![],
             oldest_opened: 0,
             depth: 0,
+            cygroot: CygRoot::new(),
         }
     }
 }
@@ -438,6 +441,8 @@ pub struct Iter {
     /// The current depth of iteration (the length of the stack at the
     /// beginning of each iteration).
     depth: usize,
+    /// Utility for resolving cygwin symlinks
+    cygroot: CygRoot,
 }
 
 /// A sequence of unconsumed directory entries.
@@ -543,6 +548,21 @@ impl Iter {
         &mut self,
         mut dent: DirEntry,
     ) -> Option<Result<DirEntry>> {
+        if cfg!(windows) {
+            let cygwin_symlink_target =
+                if !self.opts.follow_links {
+                    None
+                } else if !self.cygroot.running_under_cygwin() {
+                    None
+                } else if !maybe_cygwin_symlink(&dent.path()) {
+                    None
+                } else {
+                    Some(self.cygroot.resolve_symlink(&dent.path()))
+                };
+            if let Some(cygwin_dest) = cygwin_symlink_target {
+                dent = itry!(DirEntry::from_link(self.depth, cygwin_dest));
+            }
+        }
         if self.opts.follow_links && dent.file_type().is_symlink() {
             dent = itry!(self.follow(dent));
         }
